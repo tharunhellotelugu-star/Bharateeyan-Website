@@ -1,0 +1,6 @@
+{
+  "name": "Bharateeyan",
+  "description": "Rewards-based crowdfunding platform for Indian startup founders without elite college pedigree.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
