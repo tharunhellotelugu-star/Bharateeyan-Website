@@ -1,4 +1,4 @@
-import { GoogleGenAI, type GenerateContentParameters } from '@google/genai';
+import { GoogleGenAI, Type, type GenerateContentParameters } from '@google/genai';
 
 // The five Gemini-backed endpoints, shared by the local Express server and the Vercel function in api/ai.
 // Each handler takes the parsed JSON body and resolves to the JSON response.
@@ -19,11 +19,16 @@ function gemini(): GoogleGenAI | null {
 const MODELS = (process.env.GEMINI_MODELS || 'gemini-3.8-flash,gemini-3.6-flash')
   .split(',').map(m => m.trim()).filter(Boolean);
 
+// A model that has not answered by then is treated as overloaded; the last model gets no limit.
+const MODEL_TIMEOUT_MS = 25_000;
+
 async function generate(ai: GoogleGenAI, params: Omit<GenerateContentParameters, 'model'>) {
   let lastError: unknown;
-  for (const model of MODELS) {
+  for (const [i, model] of MODELS.entries()) {
+    const isLast = i === MODELS.length - 1;
+    const config = isLast ? params.config : { ...params.config, httpOptions: { timeout: MODEL_TIMEOUT_MS } };
     try {
-      return await ai.models.generateContent({ ...params, model });
+      return await ai.models.generateContent({ ...params, config, model });
     } catch (error) {
       console.warn(`Gemini ${model} failed, trying the next model:`, error);
       lastError = error;
@@ -124,13 +129,35 @@ async function suggestRewards(body: any) {
     const systemInstruction = `You are a rewards crowdfunding strategist for Bharateeyan. Propose exactly 4 rewards tiers for a rewards crowdfunding campaign.
 Backers receive physical items, perks, or pre-orders. NO equity, NO shares, NO profit. Return pure JSON matching the requested structure.`;
 
-    const prompt = `Product Title: ${title}\nDescription: ${description}\nCategory: ${category}\nGoal: ₹${targetGoal}\nGenerate 4 tiered rewards in Indian Rupees (INR) from entry-level backer perk to full pre-order and multi-pack.`;
+    const prompt = `Product Title: ${title}\nDescription: ${description}\nCategory: ${category}\nGoal: ₹${targetGoal}\nGenerate 4 tiered rewards in Indian Rupees (INR) from entry-level backer perk to full pre-order and multi-pack.\nToday is ${new Date().toLocaleString('en-IN', { month: 'long', year: 'numeric' })}; every estimatedDeliveryMonth must be 2 to 6 months after that (format "Mon YYYY").`;
 
     const response = await generate(ai, {
       contents: prompt,
       config: {
         systemInstruction,
         responseMimeType: 'application/json',
+        // Pins the field names the reward cards read.
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            rewards: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  title: { type: Type.STRING },
+                  price: { type: Type.INTEGER },
+                  description: { type: Type.STRING },
+                  items: { type: Type.ARRAY, items: { type: Type.STRING } },
+                  estimatedDeliveryMonth: { type: Type.STRING },
+                  quantityLimit: { type: Type.INTEGER },
+                },
+                required: ['title', 'price', 'description', 'items', 'estimatedDeliveryMonth', 'quantityLimit'],
+              },
+            },
+          },
+          required: ['rewards'],
+        },
       },
     });
 
