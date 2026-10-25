@@ -5,6 +5,8 @@ import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
   return {
+    // GitHub Pages serves the site from /Bharateeyan-Website/; AI Studio and local dev use the root.
+    base: process.env.PAGES_BASE ?? '/',
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
