@@ -27,6 +27,7 @@ import {
   Check,
   X
 } from 'lucide-react';
+import { apiUrl } from '../lib/api';
 
 interface CampaignDetailPageProps {
   campaignId: string;
@@ -73,7 +74,7 @@ export const CampaignDetailPage: React.FC<CampaignDetailPageProps> = ({
     setTranslating(true);
     try {
       const fullText = `Problem: ${campaign.story.problem}\n\nSolution: ${campaign.story.solution}\n\nWho We Are: ${campaign.story.whoWeAre}\n\nFund Usage: ${campaign.story.fundUsage}\n\nTimeline: ${campaign.story.timeline}`;
-      const res = await fetch('/api/ai/translate', {
+      const res = await fetch(apiUrl('/api/ai/translate'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

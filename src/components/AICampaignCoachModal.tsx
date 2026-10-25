@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Sparkles, X, Loader2, CheckCircle2, ShieldAlert, ArrowRight } from 'lucide-react';
+import { apiUrl } from '../lib/api';
 
 interface AICampaignCoachModalProps {
   initialTitle?: string;
@@ -35,7 +36,7 @@ export const AICampaignCoachModal: React.FC<AICampaignCoachModalProps> = ({
     setLoading(true);
     setFlaggedWords([]);
     try {
-      const res = await fetch('/api/ai/coach', {
+      const res = await fetch(apiUrl('/api/ai/coach'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -51,7 +52,7 @@ export const AICampaignCoachModal: React.FC<AICampaignCoachModalProps> = ({
       setGeneratedDraft(data.text);
 
       // Check wording compliance on the draft
-      const checkRes = await fetch('/api/ai/check-wording', {
+      const checkRes = await fetch(apiUrl('/api/ai/check-wording'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: data.text })

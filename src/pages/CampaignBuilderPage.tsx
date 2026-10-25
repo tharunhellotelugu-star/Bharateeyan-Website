@@ -17,6 +17,7 @@ import {
   Lock,
   ArrowRight
 } from 'lucide-react';
+import { apiUrl } from '../lib/api';
 
 interface CampaignBuilderPageProps {
   navigate: (path: string) => void;
@@ -127,7 +128,7 @@ export const CampaignBuilderPage: React.FC<CampaignBuilderPageProps> = ({
     }
     setSuggestingRewards(true);
     try {
-      const res = await fetch('/api/ai/suggest-rewards', {
+      const res = await fetch(apiUrl('/api/ai/suggest-rewards'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

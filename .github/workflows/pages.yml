@@ -27,6 +27,8 @@ jobs:
       - run: npm run build
         env:
           PAGES_BASE: /Bharateeyan-Website/
+          # The AI endpoints run as Vercel functions (api/ai); Pages only hosts static files.
+          VITE_API_BASE: https://bharateeyan-website.vercel.app
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

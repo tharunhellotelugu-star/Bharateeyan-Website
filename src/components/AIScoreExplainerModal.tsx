@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { MeritScoreBreakdown } from '../types';
 import { Sparkles, X, CheckCircle, AlertCircle, ArrowRight, Loader2 } from 'lucide-react';
+import { apiUrl } from '../lib/api';
 
 interface AIScoreExplainerModalProps {
   score: MeritScoreBreakdown;
@@ -27,7 +28,7 @@ export const AIScoreExplainerModal: React.FC<AIScoreExplainerModalProps> = ({
     async function fetchExplanation() {
       try {
         setLoading(true);
-        const res = await fetch('/api/ai/why-score', {
+        const res = await fetch(apiUrl('/api/ai/why-score'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
