@@ -1,4 +1,4 @@
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, type GenerateContentParameters } from '@google/genai';
 
 // The five Gemini-backed endpoints, shared by the local Express server and the Vercel function in api/ai.
 // Each handler takes the parsed JSON body and resolves to the JSON response.
@@ -13,6 +13,23 @@ function gemini(): GoogleGenAI | null {
       : null;
   }
   return client;
+}
+
+// Models tried in order: when one fails (e.g. Google reports it overloaded), the next one gets the same request.
+const MODELS = (process.env.GEMINI_MODELS || 'gemini-3.8-flash,gemini-3.6-flash')
+  .split(',').map(m => m.trim()).filter(Boolean);
+
+async function generate(ai: GoogleGenAI, params: Omit<GenerateContentParameters, 'model'>) {
+  let lastError: unknown;
+  for (const model of MODELS) {
+    try {
+      return await ai.models.generateContent({ ...params, model });
+    } catch (error) {
+      console.warn(`Gemini ${model} failed, trying the next model:`, error);
+      lastError = error;
+    }
+  }
+  throw lastError;
 }
 
 // 1. AI Campaign Coach: Drafts an honest, inspiring campaign story from rough notes
@@ -40,8 +57,7 @@ Write a structured, honest, and compelling campaign story in ${language || 'Engl
 
     const prompt = `Title: ${title}\nFounder: ${founderName}\nCategory: ${category}\nFounder's Rough Notes:\n${roughNotes || 'Grassroots hardware product designed for affordable local use.'}`;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.8-flash',
+    const response = await generate(ai, {
       contents: prompt,
       config: {
         systemInstruction,
@@ -110,8 +126,7 @@ Backers receive physical items, perks, or pre-orders. NO equity, NO shares, NO p
 
     const prompt = `Product Title: ${title}\nDescription: ${description}\nCategory: ${category}\nGoal: ₹${targetGoal}\nGenerate 4 tiered rewards in Indian Rupees (INR) from entry-level backer perk to full pre-order and multi-pack.`;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.8-flash',
+    const response = await generate(ai, {
       contents: prompt,
       config: {
         systemInstruction,
@@ -174,8 +189,7 @@ async function translate(body: any) {
 
     const targetLangName = languageMap[targetLanguage] || targetLanguage;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.8-flash',
+    const response = await generate(ai, {
       contents: `Translate the following campaign story accurately and naturally into ${targetLangName}. Maintain Markdown headings and bullet points. Preserve the respectful, authentic Indian grassroots tone:\n\n${text}`,
     });
 
@@ -217,8 +231,7 @@ Return JSON with { "summary": string, "tips": string[] }.`;
 
     const prompt = `Campaign: ${title}\nFounder: ${founderName} (${city})\nTotal Score: ${score}/100\nFactors: ${JSON.stringify(factors)}`;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.8-flash',
+    const response = await generate(ai, {
       contents: prompt,
       config: {
         systemInstruction,
@@ -250,38 +263,38 @@ Return JSON with { "summary": string, "tips": string[] }.`;
 
 // 5. Wording Checker: Scans campaign text and flags investment promises with safe rewrites
 async function checkWording(body: any) {
-  try {
-    const { text } = body;
+  const text: string = body?.text || '';
 
-    const forbiddenTerms = [
-      'shares', 'equity', 'return', 'returns', 'profit', 'dividends', 
-      'interest', 'roi', 'guaranteed income', 'invest', 'investment', 
-      'shareholder', 'yield'
-    ];
+  const forbiddenTerms = [
+    'shares', 'equity', 'return', 'returns', 'profit', 'dividends', 
+    'interest', 'roi', 'guaranteed income', 'invest', 'investment', 
+    'shareholder', 'yield'
+  ];
 
-    const lower = (text || '').toLowerCase();
-    const flagged = forbiddenTerms.filter(word => {
-      const regex = new RegExp(`\\b${word}\\b`, 'i');
-      return regex.test(lower);
-    });
+  const lower = text.toLowerCase();
+  const flagged = forbiddenTerms.filter(word => {
+    const regex = new RegExp(`\\b${word}\\b`, 'i');
+    return regex.test(lower);
+  });
 
-    const ai = gemini();
-    if (!ai) {
-      if (flagged.length > 0) {
-        return ({
-          isCompliant: false,
-          flaggedWords: flagged,
-          explanation: `Bharateeyan is strictly a rewards-based pre-order crowdfunding platform. Offering shares, equity, profit share, or financial returns is illegal under Indian SEBI regulations for non-accredited public crowdfunding.`,
-          suggestedRewrite: `Replace terms like "${flagged.join(', ')}" with pre-order phrasing such as "pre-buy our first production batch", "exclusive backer perk", or "receive a discounted founder-edition product".`
-        });
+  // Word-list verdict, used when Gemini is not configured or does not answer.
+  const wordListVerdict = flagged.length > 0
+    ? {
+        isCompliant: false,
+        flaggedWords: flagged,
+        explanation: `Bharateeyan is strictly a rewards-based pre-order crowdfunding platform. Offering shares, equity, profit share, or financial returns is illegal under Indian SEBI regulations for non-accredited public crowdfunding.`,
+        suggestedRewrite: `Replace terms like "${flagged.join(', ')}" with pre-order phrasing such as "pre-buy our first production batch", "exclusive backer perk", or "receive a discounted founder-edition product".`
       }
-      return ({
+    : {
         isCompliant: true,
         flaggedWords: [],
         explanation: 'Your campaign text adheres to Indian rewards-based pre-order regulations.',
         suggestedRewrite: null
-      });
-    }
+      };
+
+  try {
+    const ai = gemini();
+    if (!ai) return wordListVerdict;
 
     const systemInstruction = `You are a Indian Crowdfunding Compliance Officer for Bharateeyan.
 Under Indian law, rewards crowdfunding is only legal when backers receive products, services, or perks. It must NEVER promise equity, shares, profit shares, debentures, interest, or financial returns.
@@ -294,8 +307,7 @@ Return JSON with:
   "suggestedRewrite": string
 }`;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.8-flash',
+    const response = await generate(ai, {
       contents: `Audit this text for illegal equity/return promises:\n\n${text}`,
       config: {
         systemInstruction,
@@ -307,12 +319,7 @@ Return JSON with:
     return (parsed);
   } catch (error: any) {
     console.error('Error in /api/ai/check-wording:', error);
-    return ({
-      isCompliant: true,
-      flaggedWords: [],
-      explanation: 'Text checked with baseline regex filter.',
-      suggestedRewrite: null
-    });
+    return wordListVerdict;
   }
 }
 
